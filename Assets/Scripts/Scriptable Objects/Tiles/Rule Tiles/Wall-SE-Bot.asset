@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 933a40923780ba6438eb1a84582f89a1, type: 3}
+  m_Name: Wall-SE-Bot
+  m_EditorClassIdentifier: 
+  mesh: {fileID: 11400000, guid: 05884f3b0ad74f840a6d4f65e5e0237e, type: 2}
+  textureRect:
+    x: 80
+    y: 48
+    width: 16
+    height: 16
+  atlasUVCoords:
+  - {x: 0.3125, y: 0.75}
+  - {x: 0.375, y: 0.75}
+  - {x: 0.3125, y: 0.8125}
+  - {x: 0.375, y: 0.8125}

@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 933a40923780ba6438eb1a84582f89a1, type: 3}
+  m_Name: Wall-S-Mid
+  m_EditorClassIdentifier: 
+  mesh: {fileID: 11400000, guid: 1615dfde77a627d47b3a3a34d733ab1f, type: 2}
+  textureRect:
+    x: 64
+    y: 0
+    width: 16
+    height: 16
+  atlasUVCoords:
+  - {x: 0.25, y: 0.9375}
+  - {x: 0.3125, y: 0.9375}
+  - {x: 0.25, y: 1}
+  - {x: 0.3125, y: 1}
