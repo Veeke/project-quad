@@ -60,6 +60,7 @@ namespace ProjectQuad
         public void InitializeChunkDictionary()
         {
             mapChunks ??= new SerializableDictionary<Vector2Int, MapChunk>();
+
         }
 
         public void DeleteUnusedChunks(int chunksX, int chunksZ)

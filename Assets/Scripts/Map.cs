@@ -15,9 +15,9 @@ namespace ProjectQuad
         [SerializeField]
         Tileset tileset;
 
-        [SerializeField, Range(-4, 12)]
+        [SerializeField, Range(-4, 11)]
         int brushHeight;
-        [SerializeField, Range(1, 12)]
+        [SerializeField, Range(1, 8)]
         int brushSize = 1;
 
         HeightMap heightMap;
@@ -35,51 +35,78 @@ namespace ProjectQuad
 
         public void PlaceTile(int x, int y, int height)
         {
+            if (GetCellHeight(x, y) == height) return;
+
             heightMap.SetCell(x, y, height);
-            RegenChunks(x, y);
+            var chunksToRegen = GetEditedChunks(new Vector2Int(x, y));
+            RegenChunks(chunksToRegen);
             SaveMapData();
         }
 
-        public HashSet<Vector2Int> GetEditedChunks(Vector2Int[] coords)
+        public void PlaceTiles(List<Vector2Int> coords, int height)
+        {
+            List<Vector2Int> editedTiles = new(coords.Count);
+            foreach (Vector2Int tileCoord in coords)
+            {
+                if (GetCellHeight(tileCoord.x, tileCoord.y) == height) continue;
+
+                heightMap.SetCell(tileCoord.x, tileCoord.y, height);
+                editedTiles.Add(tileCoord);
+            }
+            var chunksToRegen = GetEditedChunks(editedTiles);
+            RegenChunks(chunksToRegen);
+            SaveMapData();
+        }
+
+        public HashSet<Vector2Int> GetEditedChunks(Vector2Int tileCoord)
+        {
+            HashSet<Vector2Int> editedChunks = new();
+            Vector2Int chunkCoord = tileCoord / chunkSize;
+
+            editedChunks.Add(chunkCoord);
+            if (tileCoord.x % chunkSize == 0 && tileCoord.x != 0)
+                editedChunks.Add(chunkCoord + Vector2Int.left);
+            if ((tileCoord.x + 1) % chunkSize == 0 && tileCoord.x != mapSize.x)
+                editedChunks.Add(chunkCoord + Vector2Int.right);
+            if (tileCoord.y % chunkSize == 0 && tileCoord.y != 0)
+                editedChunks.Add(chunkCoord + Vector2Int.down);
+            if ((tileCoord.y + 1) % chunkSize == 0 && tileCoord.y != mapSize.y)
+                editedChunks.Add(chunkCoord + Vector2Int.up);
+
+            return editedChunks;
+        }
+
+        public HashSet<Vector2Int> GetEditedChunks(List<Vector2Int> tileCoords)
         {
             HashSet<Vector2Int> editedChunks = new();
             
-            for (int i = 0; i < coords.Length; i++)
+            foreach (Vector2Int tileCoord in tileCoords)
             {
-                Vector2Int tileCoords = new(coords[i].x, coords[i].y);
-                Vector2Int chunkCoord = tileCoords / chunkSize;
-                if (chunkCoord.x < 0 || chunkCoord.y < 0) 
-                    continue;
+                Vector2Int chunkCoord = tileCoord / chunkSize;
+
                 editedChunks.Add(chunkCoord);
+                if (tileCoord.x % chunkSize == 0 && tileCoord.x != 0)
+                    editedChunks.Add(chunkCoord + Vector2Int.left);
+                if ((tileCoord.x + 1) % chunkSize == 0 && tileCoord.x != mapSize.x)
+                    editedChunks.Add(chunkCoord + Vector2Int.right);
+                if (tileCoord.y % chunkSize == 0 && tileCoord.y != 0)
+                    editedChunks.Add(chunkCoord + Vector2Int.down);
+                if ((tileCoord.y + 1) % chunkSize == 0 && tileCoord.y != mapSize.y)
+                    editedChunks.Add(chunkCoord + Vector2Int.up);
             }
             return editedChunks;
         }
 
-        public void RegenChunks(int x, int y)
+        public void RegenChunks(HashSet<Vector2Int> editedChunks)
         {
-            Vector2Int chunkCoord = new(x / chunkSize, y / chunkSize);
+            foreach (Vector2Int chunkCoord in editedChunks)
+            {
+                if (chunkCoord.x < 0 || chunkCoord.y < 0) continue;
+                if (chunkCoord.x > (mapSize.x - 1) / chunkSize || chunkCoord.y > (mapSize.y - 1) / chunkSize) continue;
 
-            meshGenerator.GenerateChunk(chunkCoord, heightMap);
-            if (x % chunkSize == 0 && x != 0)
-            {
-                meshGenerator.GenerateChunk(chunkCoord + Vector2Int.left, heightMap);
+                Debug.Log($"Chunk {chunkCoord} has been regenerated");
+                meshGenerator.GenerateChunk(chunkCoord, heightMap);
             }
-            if ((x + 1) % chunkSize == 0 && x != mapSize.x)
-            {
-                meshGenerator.GenerateChunk(chunkCoord + Vector2Int.right, heightMap);
-            }
-            if (y % chunkSize == 0 && y != 0)
-            {
-                meshGenerator.GenerateChunk(chunkCoord + Vector2Int.down, heightMap);
-            }
-            if ((y + 1) % chunkSize == 0 && y != mapSize.y)
-            {
-                meshGenerator.GenerateChunk(chunkCoord + Vector2Int.up, heightMap);
-            }
-        }
-
-        public void PlaceTiles(Vector2Int[] coords, int height)
-        {
         }
 
         [ContextMenu("Reload Map")]

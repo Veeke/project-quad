@@ -2,6 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.Rendering;
+using System;
 
 namespace ProjectQuad
 {
@@ -78,7 +79,9 @@ namespace ProjectQuad
             if (SelectedTool != Tool.View) 
             {
                 EditorGUILayout.PropertyField(propBrushHeight);
+                propBrushHeight.intValue = Mathf.Clamp(propBrushHeight.intValue, -4, 11);
                 EditorGUILayout.PropertyField(propBrushSize);
+                propBrushSize.intValue = Mathf.Clamp(propBrushSize.intValue, 1, 8);
             }
             so.ApplyModifiedProperties();
         }
@@ -96,9 +99,10 @@ namespace ProjectQuad
             int controlId = GUIUtility.GetControlID(s_MapEditorHash, FocusType.Passive);
 
             Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            Vector3 worldMousePos = Vector2.zero;
-            Vector3Int worldTileCoord = Vector3Int.zero;
             int height = propBrushHeight.intValue;
+
+            Vector3 mousePos = Vector3.zero;
+            Vector3Int tileCoord = Vector3Int.zero;
 
             // When editing, raycast to a plane at the brush height
             if (SelectedTool == Tool.Edit)
@@ -108,8 +112,8 @@ namespace ProjectQuad
 
                 if (groundPlane.Raycast(ray, out float distance))
                 {
-                    worldMousePos = ray.GetPoint(distance);
-                    worldTileCoord = Vector3Int.FloorToInt(worldMousePos);
+                    mousePos = ray.GetPoint(distance);
+                    tileCoord = Vector3Int.FloorToInt(mousePos);
                 }
             }
             // When picking a tile's height, raycast to the mesh collider to get the ground tile the mouse is hovering
@@ -117,30 +121,29 @@ namespace ProjectQuad
             {
                 if (Physics.Raycast(ray, out RaycastHit hit, 200, mapLayerMask))
                 {
-                    worldMousePos = hit.point;
-                    worldTileCoord = Vector3Int.FloorToInt(worldMousePos);       
+                    mousePos = hit.point;
+                    tileCoord = Vector3Int.FloorToInt(mousePos);       
                 }
             }
-
-            List<Vector2Int> tiles = GetHoveredTiles(worldMousePos, propBrushSize.intValue);
-            if (SelectedTool == Tool.Edit)
-            {
-                foreach (Vector2Int coord in tiles)
-                {
-                    DrawTileGizmo(coord);
-                }
-            }
-            else
-            {
-                DrawTileGizmo(new Vector2Int(worldTileCoord.x, worldTileCoord.z));
-            }
-
-            Vector3Int tileCoord = Vector3Int.FloorToInt(worldTileCoord - mapInstance.transform.position);
+            List<Vector2Int> hoveredTiles = GetHoveredTiles(mousePos, propBrushSize.intValue);
 
             switch (e.type)
             {
                 case EventType.Layout:
                     HandleUtility.AddDefaultControl(controlId);
+
+
+                    if (SelectedTool == Tool.Edit)
+                    {
+                        foreach (Vector2Int coord in hoveredTiles)
+                        {
+                            DrawTileGizmo(coord);
+                        }
+                    }
+                    else
+                    {
+                        DrawTileGizmo(new Vector2Int(tileCoord.x, tileCoord.z));
+                    }
                     break;
 
                 // Refocus on scene view if the mouse is hovering it without having to click
@@ -149,33 +152,23 @@ namespace ProjectQuad
                     Repaint();
                     break;
 
-                // Hold ALT to enable the Pick Tool
                 case EventType.KeyDown:
-                    if (e.keyCode == KeyCode.LeftAlt || e.keyCode == KeyCode.RightAlt)
-                    {
-                        SwitchTool(Tool.Pick);
-                    }
+                    HandleKeyDown(e.keyCode);
                     break;
 
                 case EventType.KeyUp:
-                    if (e.keyCode == KeyCode.LeftAlt || e.keyCode == KeyCode.RightAlt)
-                    {
-                        SwitchTool(Tool.Edit);
-                    }
+                    HandleKeyUp(e.keyCode);
                     break;
 
-                case EventType.MouseDown:
-                case EventType.MouseDrag:
+                case EventType.MouseDown or EventType.MouseDrag:
                     if (e.button != 0)
                         return;
+
                     if (SelectedTool == Tool.Edit)
                     {
-                        foreach (Vector2Int coord in tiles)
-                        {
-                            PlaceTile(coord.x, coord.y, height);
-                        }
+                        mapInstance.PlaceTiles(hoveredTiles, height);
                     }
-                    // For some reason this check only works if the MouseDown case is defined, even if empty
+
                     if (SelectedTool == Tool.Pick && e.type == EventType.MouseDown)
                     {
                         SetBrushToTileHeight(tileCoord.x, tileCoord.z);
@@ -189,12 +182,12 @@ namespace ProjectQuad
             }
         }
 
-        private List<Vector2Int> GetHoveredTiles(Vector3 worldMousePos, int brushSize)
+        private List<Vector2Int> GetHoveredTiles(Vector3 mousePos, int brushSize)
         {
             List<Vector2Int> tiles = new(brushSize * brushSize);
 
-            int xMin = Mathf.RoundToInt(worldMousePos.x - brushSize / 2.0f);
-            int zMin = Mathf.RoundToInt(worldMousePos.z - brushSize / 2.0f);
+            int xMin = Mathf.RoundToInt(mousePos.x - brushSize / 2.0f);
+            int zMin = Mathf.RoundToInt(mousePos.z - brushSize / 2.0f);
 
             for (int z = zMin; z < zMin + brushSize; z++)
             {
@@ -204,11 +197,6 @@ namespace ProjectQuad
                 }
             }
             return tiles;
-        }
-
-        private void PlaceTile(int x, int z, int height)
-        {
-            mapInstance.PlaceTile(x, z, height);
         }
 
         private void SetBrushToTileHeight(int x, int z)
@@ -249,6 +237,50 @@ namespace ProjectQuad
                     new Vector3(1, Mathf.Abs(dy), 1));
             }
 
+        }
+
+        private void HandleKeyDown(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.LeftAlt or KeyCode.RightAlt:
+                    SwitchTool(Tool.Pick);
+                    break;
+
+                case KeyCode.LeftBracket:
+                    propBrushSize.intValue--;
+                    break;
+
+                case KeyCode.RightBracket:
+                    propBrushSize.intValue++;
+                    break;
+
+                case KeyCode.Minus or KeyCode.KeypadMinus:
+                    propBrushHeight.intValue--;
+                    break;
+
+                case KeyCode.Equals or KeyCode.KeypadPlus:
+                    propBrushHeight.intValue++;
+                    break;
+
+                default:
+                    break;
+            }
+            so.ApplyModifiedProperties();
+        }
+
+        private void HandleKeyUp(KeyCode key)
+        {
+            switch (key)
+            { 
+                case KeyCode.LeftAlt:
+                case KeyCode.RightAlt:
+                    SwitchTool(Tool.Edit);
+                    break;
+                default:
+                    break;
+            }
+            so.ApplyModifiedProperties();
         }
 
         private void SwitchTool(Tool tool)
