@@ -7,13 +7,13 @@ namespace ProjectQuad
 {
     public class JsonDataService
     {
-        public T LoadData<T>(string relativePath)
+        public T LoadData<T>(string relativePath, bool createEmptyOnFail = false)
         {
             string path = Application.dataPath + relativePath;
 
             if (!File.Exists(path))
             {
-                Debug.LogError($"Cannot load file at {path}. File does not exist.");
+                Debug.Log($"Cannot load file at {path}. File does not exist.");
                 throw new FileNotFoundException($"{path} does not exist.");
             }
             try

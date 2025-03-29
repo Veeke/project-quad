@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace ProjectQuad
 {
+    [System.Serializable]
     public class MeshData
     {
         public List<Vector3> vertices;

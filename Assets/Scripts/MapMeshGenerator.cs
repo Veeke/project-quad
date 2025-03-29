@@ -1,10 +1,10 @@
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 
 namespace ProjectQuad
 {
     [ExecuteInEditMode]
-    [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
     public class MapMeshGenerator : MonoBehaviour
     {
         readonly int chunkSize = Constants.CHUNK_SIZE;
@@ -41,9 +41,12 @@ namespace ProjectQuad
 
         public Tileset tileset;
 
-        Mesh mesh;
-        MeshCollider meshCollider;
-        MeshRenderer meshRenderer;
+        Vector2Int mapSize;
+        SerializableDictionary<Vector2Int, MapChunk> mapChunks;
+
+        [SerializeField]
+        GameObject mapChunkPrefab;
+
         MeshData meshData;
 
         readonly Vector2Int[] neighbourOffsets =
@@ -54,46 +57,82 @@ namespace ProjectQuad
             Vector2Int.left
         };
 
-        public void OnValidate()
+        public void InitializeChunkDictionary()
         {
-            if (tileset == null)
+            mapChunks ??= new SerializableDictionary<Vector2Int, MapChunk>();
+        }
+
+        public void DeleteUnusedChunks(int chunksX, int chunksZ)
+        {
+            var chunksToDelete = mapChunks.Where(c => c.Key.x >= chunksX || c.Key.y >= chunksZ).ToArray();
+            foreach (var chunk in chunksToDelete)
             {
-                Debug.LogError("No tileset has been selected.");
-                return;
+                DestroyImmediate(mapChunks[chunk.Key].gameObject);
+                mapChunks.Remove(chunk.Key);
             }
-            meshRenderer = meshRenderer != null ? meshRenderer : GetComponent<MeshRenderer>();
-            meshRenderer.sharedMaterial = tileset.material;
         }
 
         public void GenerateMapMesh(HeightMap heightMap)
         {
-            if (mesh == null)
+            mapSize = heightMap.GetMapSize();
+
+            int chunkSize = Constants.CHUNK_SIZE;
+
+            int chunksX = (mapSize.x + (chunkSize - 1)) / chunkSize;
+            int chunksZ = (mapSize.y + (chunkSize - 1)) / chunkSize;
+
+            InitializeChunkDictionary();
+
+            DeleteUnusedChunks(chunksX, chunksZ);
+
+            for (int z = 0; z < chunksZ; z++)
             {
-                mesh = new Mesh()
+                for (int x = 0; x < chunksX; x++)
                 {
-                    name = "Tile Mesh"
-                };
-                GetComponent<MeshFilter>().mesh = mesh;
-                meshCollider = GetComponent<MeshCollider>();
-                meshCollider.sharedMesh = mesh;
+                    Vector2Int chunkCoord = new(x, z);
+                    if (!mapChunks.ContainsKey(chunkCoord))
+                    {
+                        InitializeChunk(chunkCoord);
+                    }
+                    GenerateChunk(chunkCoord, heightMap);
+                }
             }
-            else mesh.Clear();
+        }
 
-            if (meshData == null)
+        private void InitializeChunk(Vector2Int chunkCoord)
+        {
+            GameObject prefabInstance = Instantiate(mapChunkPrefab);
+            prefabInstance.name = "Chunk " + chunkCoord.ToString();
+            prefabInstance.transform.parent = transform;
+
+            MapChunk mapChunk = prefabInstance.GetComponent<MapChunk>();
+            Mesh chunkMesh = new()
             {
-                meshData = new MeshData(chunkSize, chunkHeight);
-            }
-            else meshData.ClearData();
+                name = "Chunk Mesh " + chunkCoord.ToString()
+            };
+            MeshData chunkMeshData = new(chunkSize, chunkHeight);
+            mapChunk.InitializeMesh(chunkMesh, chunkMeshData, tileset.material);
+            mapChunks.Add(chunkCoord, mapChunk);
 
-            Vector2Int mapSize = heightMap.GetMapSize();
-            int sizeX = chunkSize <= mapSize.x ? chunkSize : mapSize.x;
-            int sizeZ = chunkSize <= mapSize.y ? chunkSize : mapSize.y;
+            Debug.Log($"Chunk generated at coordinates {chunkCoord}");
+        }
 
-            for (int z = 0; z < sizeZ; z++)
+        public void GenerateChunk(Vector2Int chunkCoord, HeightMap heightMap)
+        {
+            MapChunk chunk = mapChunks[chunkCoord];
+            chunk.ClearMesh();
+            meshData = chunk.GetMeshData();
+
+            int chunkSizeX = Mathf.Clamp(mapSize.x - chunkSize * chunkCoord.x, 0, chunkSize);
+            int chunkSizeZ = Mathf.Clamp(mapSize.y - chunkSize * chunkCoord.y, 0, chunkSize);
+
+            Vector2Int origin = chunkCoord * chunkSize;
+
+            for (int z = 0; z < chunkSizeZ; z++)
             {
-                for (int x = 0; x < sizeX; x++)
+                for (int x = 0; x < chunkSizeX; x++)
                 {
-                    Vector2Int tileCoord = new(x, z);
+                    Vector2Int tileCoord = origin + new Vector2Int(x, z);
                     int tileHeight = heightMap.GetCell(tileCoord);
                     int[] neighbours = new int[neighbourOffsets.Length];
 
@@ -104,14 +143,7 @@ namespace ProjectQuad
                     PlaceAutoTiles(tileCoord, tileHeight, neighbours);
                 }
             }
-            mesh.SetVertices(meshData.vertices);
-            mesh.SetTriangles(meshData.triangles, 0);
-            mesh.SetUVs(0, meshData.uvs);
-            mesh.RecalculateNormals();
-
-            // Enabling and disabling a Mesh Collider updates it, for some reason.
-            meshCollider.enabled = false;
-            meshCollider.enabled = true;
+            chunk.RebuildMesh();
         }
 
         private BitArray GetBitmask(int tileHeight, int[] neighbours)
@@ -299,18 +331,11 @@ namespace ProjectQuad
             meshData.AddMesh(tileCoord, tile);
         }
 
-        private void PlaceWallTiles(Vector2Int tileCoord, int baseHeight, int topHeight, Tile tile, Tile baseTile = null)
+        private void PlaceWallTiles(Vector2Int tileCoord, int baseHeight, int topHeight, Tile tile)
         {
             for (int height = baseHeight; height < topHeight; height++)
             {
-                if (height == baseHeight && baseTile != null)
-                {
-                    meshData.AddMesh(new Vector3(tileCoord.x, height, tileCoord.y), baseTile);
-                }
-                else
-                {
-                    meshData.AddMesh(new Vector3(tileCoord.x, height, tileCoord.y), tile);
-                }  
+                meshData.AddMesh(new Vector3(tileCoord.x, height, tileCoord.y), tile);  
             }
         }
 

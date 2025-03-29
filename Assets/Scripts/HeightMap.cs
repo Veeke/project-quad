@@ -35,14 +35,15 @@ namespace ProjectQuad
 
         public void SetCell(int x, int y, int height)
         {
-            if (x >= 0 && y >= 0 && x < mapSize.x && y < mapSize.y)
+            if (IsCellWithinBounds(x, y))
             {
                 heightMap[x, y] = height;
             }
-            else
-            {
-                Debug.Log("The tile you're trying to set is out of bounds.");
-            }
+        }
+
+        public bool IsCellWithinBounds(int x, int y)
+        {
+            return x >= 0 && y >= 0 && x < mapSize.x && y < mapSize.y;
         }
 
         public Vector2Int GetMapSize()

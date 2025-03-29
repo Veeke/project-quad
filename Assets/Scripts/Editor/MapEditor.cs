@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.Rendering;
 
 namespace ProjectQuad
@@ -15,6 +16,7 @@ namespace ProjectQuad
         SerializedProperty propMapName;
         SerializedProperty propMapSize;
         SerializedProperty propBrushHeight;
+        SerializedProperty propBrushSize;
 
         readonly Vector3 tileCenterOffset = new (0.5f, 0, 0.5f);
 
@@ -42,6 +44,7 @@ namespace ProjectQuad
             propMapName = so.FindProperty("mapName");
             propMapSize = so.FindProperty("mapSize");
             propBrushHeight = so.FindProperty("brushHeight");
+            propBrushSize = so.FindProperty("brushSize");
 
             toolbarButtons = new GUIContent[]
             {
@@ -75,6 +78,7 @@ namespace ProjectQuad
             if (SelectedTool != Tool.View) 
             {
                 EditorGUILayout.PropertyField(propBrushHeight);
+                EditorGUILayout.PropertyField(propBrushSize);
             }
             so.ApplyModifiedProperties();
         }
@@ -92,7 +96,8 @@ namespace ProjectQuad
             int controlId = GUIUtility.GetControlID(s_MapEditorHash, FocusType.Passive);
 
             Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-            Vector3Int worldPos = Vector3Int.zero;
+            Vector3 worldMousePos = Vector2.zero;
+            Vector3Int worldTileCoord = Vector3Int.zero;
             int height = propBrushHeight.intValue;
 
             // When editing, raycast to a plane at the brush height
@@ -103,8 +108,8 @@ namespace ProjectQuad
 
                 if (groundPlane.Raycast(ray, out float distance))
                 {
-                    worldPos = Vector3Int.FloorToInt(ray.GetPoint(distance));
-                    DrawTileGizmo(worldPos.x, worldPos.z);
+                    worldMousePos = ray.GetPoint(distance);
+                    worldTileCoord = Vector3Int.FloorToInt(worldMousePos);
                 }
             }
             // When picking a tile's height, raycast to the mesh collider to get the ground tile the mouse is hovering
@@ -112,12 +117,25 @@ namespace ProjectQuad
             {
                 if (Physics.Raycast(ray, out RaycastHit hit, 200, mapLayerMask))
                 {
-                    worldPos = Vector3Int.FloorToInt(hit.point);
-                    DrawTileGizmo(worldPos.x, worldPos.z);
+                    worldMousePos = hit.point;
+                    worldTileCoord = Vector3Int.FloorToInt(worldMousePos);       
                 }
             }
 
-            Vector3Int localPos = Vector3Int.FloorToInt(worldPos - mapInstance.transform.position);
+            List<Vector2Int> tiles = GetHoveredTiles(worldMousePos, propBrushSize.intValue);
+            if (SelectedTool == Tool.Edit)
+            {
+                foreach (Vector2Int coord in tiles)
+                {
+                    DrawTileGizmo(coord);
+                }
+            }
+            else
+            {
+                DrawTileGizmo(new Vector2Int(worldTileCoord.x, worldTileCoord.z));
+            }
+
+            Vector3Int tileCoord = Vector3Int.FloorToInt(worldTileCoord - mapInstance.transform.position);
 
             switch (e.type)
             {
@@ -147,18 +165,20 @@ namespace ProjectQuad
                     break;
 
                 case EventType.MouseDown:
-                case EventType.MouseUp:
                 case EventType.MouseDrag:
                     if (e.button != 0)
                         return;
                     if (SelectedTool == Tool.Edit)
                     {
-                        PlaceTile(localPos.x, localPos.z, height);
+                        foreach (Vector2Int coord in tiles)
+                        {
+                            PlaceTile(coord.x, coord.y, height);
+                        }
                     }
                     // For some reason this check only works if the MouseDown case is defined, even if empty
                     if (SelectedTool == Tool.Pick && e.type == EventType.MouseDown)
                     {
-                        SetBrushToTileHeight(localPos.x, localPos.z);
+                        SetBrushToTileHeight(tileCoord.x, tileCoord.z);
                         SwitchTool(Tool.Edit);
                     }
                     e.Use();
@@ -169,9 +189,26 @@ namespace ProjectQuad
             }
         }
 
+        private List<Vector2Int> GetHoveredTiles(Vector3 worldMousePos, int brushSize)
+        {
+            List<Vector2Int> tiles = new(brushSize * brushSize);
+
+            int xMin = Mathf.RoundToInt(worldMousePos.x - brushSize / 2.0f);
+            int zMin = Mathf.RoundToInt(worldMousePos.z - brushSize / 2.0f);
+
+            for (int z = zMin; z < zMin + brushSize; z++)
+            {
+                for (int x = xMin; x < xMin + brushSize; x++)
+                {
+                    tiles.Add(new Vector2Int(x, z));
+                }
+            }
+            return tiles;
+        }
+
         private void PlaceTile(int x, int z, int height)
         {
-            mapInstance.EditMap(x, z, height);
+            mapInstance.PlaceTile(x, z, height);
         }
 
         private void SetBrushToTileHeight(int x, int z)
@@ -180,36 +217,38 @@ namespace ProjectQuad
             so.ApplyModifiedProperties();
         }
 
-        private void DrawTileGizmo(int x, int z)
+        private void DrawTileGizmo(Vector2Int coord)
         {
             int brushHeight = propBrushHeight.intValue;
-            int cellHeight = mapInstance.GetCellHeight(x, z);
+            int cellHeight = mapInstance.GetCellHeight(coord.x, coord.y);
 
             // In pick mode, draw a yellow square at the nearest cell's height to indicate which tile will be copied
             if (SelectedTool == Tool.Pick)
             {
                 Handles.color = Color.yellow;
                 Handles.DrawWireCube(
-                    new Vector3(x, cellHeight / 2f, z) + tileCenterOffset,
-                    new Vector3(1, cellHeight, 1));
-                return;
-            }
-
-            // In edit mode, draw a gizmo to preview the change in height when a tile would be placed
-            // (white = no change, green = add, red = remove)
-            if (brushHeight == cellHeight)
-            {
-                Handles.DrawWireCube(
-                    new Vector3(x, brushHeight, z) + tileCenterOffset,
+                    new Vector3(coord.x, cellHeight, coord.y) + tileCenterOffset,
                     new Vector3(1, 0, 1));
                 return;
             }
-            
-            int dy = brushHeight - cellHeight;
-            Handles.color = dy > 0 ? Color.green : Color.red;
-            Handles.DrawWireCube(
-                new Vector3(x, (brushHeight + cellHeight) / 2f, z) + tileCenterOffset,
-                new Vector3(1, Mathf.Abs(dy), 1));
+
+            if (brushHeight == cellHeight)
+            {
+                Handles.DrawWireCube(
+                    new Vector3(coord.x, brushHeight, coord.y) + tileCenterOffset,
+                    new Vector3(1, 0, 1));
+            }
+            else
+            {
+                // In edit mode, draw a gizmo to preview the change in height when a tile would be placed
+                // (white = no change, green = add, red = remove)
+                int dy = brushHeight - cellHeight;
+                Handles.color = dy > 0 ? Color.green : Color.red;
+                Handles.DrawWireCube(
+                    new Vector3(coord.x, (brushHeight + cellHeight) / 2f, coord.y) + tileCenterOffset,
+                    new Vector3(1, Mathf.Abs(dy), 1));
+            }
+
         }
 
         private void SwitchTool(Tool tool)
